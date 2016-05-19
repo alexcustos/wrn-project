@@ -1,0 +1,3 @@
+(fp_lib_table
+  (lib (name wdt_rng_nrf)(type KiCad)(uri "$(KIPRJMOD)\\wdt_rng_nrf.pretty")(options "")(descr ""))
+)

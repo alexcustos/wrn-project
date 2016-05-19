@@ -1,0 +1,162 @@
+#!/bin/bash
+# Copyright (c) 2016 Aleksandr Borisenko
+# Distributed under the terms of the GNU General Public License v2
+
+WRND_CONFIG="/etc/conf.d/wrnd"
+WRND_BIN="/usr/local/bin/wrnd"
+WRND_PID=$(ps -eo pid,args | grep "${WRND_BIN}" | grep -v grep | awk '{ print $1 }')
+SCRIPT_NAME=`basename $0`
+LOCK_NAME="/tmp/.${SCRIPT_NAME}.fifolock"
+AVRDUDE_CONF="/etc/avrdude.conf"
+AVRDUDE_BAUDRATE=115200
+SCRIPT_VERSION="0.1"
+DEFAULT_LOG_LINES=0
+FIFO_MAX_WAIT=1  # sec
+FIFO_MAX_LOCK=10  # sec
+E_SYSERROR=1
+E_COMERROR=2
+E_OPTERROR=3
+
+# DEFAULT
+WRND_DEVICE="/dev/ttyS0"
+WRND_BAUDRATE=57600
+WRND_CMDFIFO="/run/wrnd/cmd.fifo"
+
+if [ -f ${WRND_CONFIG} ]; then
+	. ${WRND_CONFIG}
+fi
+
+echo_to_stderr()
+{
+	echo "$@" 1>&2;
+}
+
+function device_cmd()
+{
+	cmd=$1
+	(
+		if ! flock -w ${FIFO_MAX_WAIT} 4; then
+			echo_to_stderr "The another process using FIFO."
+			echo "--"
+			return
+		fi
+		if [ -O ${LOCK_NAME} ]; then chmod 666 ${LOCK_NAME}; fi
+
+		exec 3< <(timeout ${FIFO_MAX_LOCK} cat ${WRND_CMDFIFO})
+		sleep 0.2
+		if [ -r /dev/fd/3 ]; then
+			echo "$cmd" >${WRND_DEVICE}
+			while read log_line <&3; do
+				echo "$log_line"
+			done
+			exec 3>&-  # close fd 3
+		fi
+	) 4>${LOCK_NAME}
+}
+
+function device_flash()
+{
+	hex=$1
+
+	if [ ! -f ${hex} ]; then
+		echo_to_stderr "The file '${hex}' was not found."
+		return
+	fi
+
+	if ! hash avrdude 2>/dev/null; then
+		echo_to_stderr "Program 'avrdude' was not found in the PATH."
+		return
+	fi
+	stty -F "${WRND_DEVICE}" cs8 ${WRND_BAUDRATE} raw ignbrk noflsh -onlcr -iexten -echo -echoe -echok -echoctl -echoke -crtscts
+	echo "W1" >${WRND_DEVICE}  # WDT deactivate
+	echo "R1" >${WRND_DEVICE}  # RNG flood off
+	echo "C4" >${WRND_DEVICE}  # unlock DTR
+
+	avrdude -C${AVRDUDE_CONF} -v -patmega328p -carduino -P${WRND_DEVICE} \
+		-b${AVRDUDE_BAUDRATE} -D -Uflash:w:"${hex}":i
+}
+
+function usage()
+{
+	echo_to_stderr ""
+	echo_to_stderr "${SCRIPT_NAME} version ${SCRIPT_VERSION}"
+	echo_to_stderr "USAGE:"
+	echo_to_stderr "    ${SCRIPT_NAME} [command]"
+	echo_to_stderr "COMMANDS:"
+	echo_to_stderr "    stat          - show status of the WRN device."
+	echo_to_stderr "    wstat         - show status of the WDT subsystem."
+	echo_to_stderr "    rstat         - show status of the RNG subsystem."
+	echo_to_stderr "    log <lines>   - show number of lines of the log from the device."
+	echo_to_stderr "                    DEFAULT: ${DEFAULT_LOG_LINES} (0 - show all lines)."
+	echo_to_stderr "    synctime      - sync the device time with the host time."
+	echo_to_stderr "    cleanlog      - clear the EEPROM of the device."
+	echo_to_stderr "    reset         - reboot the device to set it to the initial state."
+	echo_to_stderr "    flash [.hex]  - prepare the device and program the .hex into the board."
+	echo_to_stderr "                    NOTE: this function may be disabled at the hardware level."
+	exit ${E_OPTERROR}
+}
+
+if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+	echo_to_stderr "Wrong number of arguments specified."
+	usage
+fi
+
+if [ $# -eq 2 ] && [ "$1" == "flash" ]; then
+	device_flash "$2"
+	exit 0
+fi
+
+if [ -z "${WRND_PID}" ]; then
+	echo_to_stderr "WRN daemon must be started to provide the communication with the device."
+	exit ${E_SYSERROR}
+fi
+
+if [ ! -p "${WRND_CMDFIFO}" ]; then
+	echo_to_stderr "The FIFO ${WRND_CMDFIFO} cannot be opened for reading. Please check the permissions."
+	exit ${E_SYSERROR}
+fi
+
+case "$1" in
+	"stat")
+		response=$(device_cmd "C2")
+		;;
+	"wstat")
+		response=$(device_cmd "W2")
+		;;
+	"rstat")
+		response=$(device_cmd "R2")
+		;;
+	"log")
+		if [[ $2 =~ ^[0-9]+$ ]]; then
+			log_lines=$2
+		else
+			log_lines=${DEFAULT_LOG_LINES}
+		fi
+		response=$(device_cmd "W4:$log_lines")
+		;;
+	"synctime")
+		echo "C1:"$(date +%s) >${WRND_DEVICE}
+		response="--"
+		;;
+	"cleanlog")
+		response=$(device_cmd "C5")
+		;;
+	"reset")
+		echo "C3" >${WRND_DEVICE}
+		response="A reboot request has been sent to the device."
+		;;
+	*)
+		echo_to_stderr "Unknown argument: $1."
+		usage
+		;;
+esac
+
+if [ -z "$response" ]; then
+	echo_to_stderr "No response from the device. Please try again."
+	exit ${E_COMERROR}
+elif [ "$response" == "--" ]; then
+	exit 0
+fi
+
+echo "$response"
+exit 0

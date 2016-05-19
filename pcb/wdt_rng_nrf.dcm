@@ -1,0 +1,23 @@
+EESchema-DOCLIB  Version 2.0
+#
+$CMP 2N3904
+D 40V Vce, 0.2A Ic, NPN, TO-92
+K 2N3904 NPN Transistor
+$ENDCMP
+#
+$CMP 2N7000
+D 60V Vds 0.2A Id, N-Channel MOSFET, TO-92
+K N-Channel MOSFET
+$ENDCMP
+#
+$CMP Button_DPST
+D Double Pole Single Throw (DPST) Button
+K button
+$ENDCMP
+#
+$CMP LM1117T-3.3
+D LM1117T-3.3, 1.2A 15V Linear Regulator, Fixed Output 3.3V, TO-220
+K Voltage Regulator 1.2A Positive
+$ENDCMP
+#
+#End Doc Library

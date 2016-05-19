@@ -1,0 +1,14 @@
+#!/bin/bash
+# Copyright (c) 2016 Aleksandr Borisenko
+# Distributed under the terms of the GNU General Public License v2
+
+WRNCTRL="/usr/local/bin/wrnctrl"
+LOG="/var/log/wrnd/status.log"
+
+echo "+++ "$(date '+%Y-%m-%d %H:%M:%S') >>${LOG}
+${WRNCTRL} stat >>${LOG}
+${WRNCTRL} wstat >>${LOG}
+${WRNCTRL} rstat >>${LOG}
+${WRNCTRL} synctime
+
+exit 0

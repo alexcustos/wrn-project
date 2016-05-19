@@ -1,0 +1,25 @@
+release/
+
+# Notepad++
+wrnd.session
+
+# KiCAD
+pcb/*.bak
+pcb/*.bck
+pcb/*-bak
+
+# Atmel Studio
+.vs/
+wrn/[Dd]ebug/
+wrn/[Rr]elease/
+
+# GCC
+wrnd/.tmp_versions/
+wrnd/wrnd
+wrnd/*.o
+wrnd/*.ko
+wrnd/*.tmp
+wrnd/*.mod.c
+wrnd/*.cmd
+wrnd/*.symvers
+wrnd/*.order
