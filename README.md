@@ -18,4 +18,6 @@ The project depends on:
 * [alexcustos/RF24](https://github.com/alexcustos/RF24)
 * [alexcustos/RF24Network](https://github.com/alexcustos/RF24Network)
 
-Here's an article in russian with more details: 
+Here's an article in russian with more details:
+* [Part 1](https://geektimes.ru/post/275912/)
+* [Part 2](https://habrahabr.ru/post/300968/)
