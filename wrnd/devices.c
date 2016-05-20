@@ -11,12 +11,21 @@
 #include <time.h>
 #include <fcntl.h>
 #include <string.h>
+#include <pthread.h>
 #include "devices.h"
+#include "utils.h"
 #include "wrnd.h"
 
-static int cmd_fifo_fd = -1, rng_fifo_fd = -1, nrf_fifo_fd = -1;
+static int cmd_fifo_fd = -1, rng_fifo_fd = -1, nrf_fifo_fd = -1, wdt_fifo_fd = -1;
 static char message_buffer[COMMAND_FEEDBACK_SIZE];
 static char time_buffer[21];
+
+static pthread_spinlock_t wrn_wdt_lock;
+static pthread_t wrn_wdt_thread;
+static bool wrn_wdt_nowayout = WDT_NOWAYOUT;
+static struct timeval wrn_wdt_keep_alive_sent = {.tv_sec = 0, .tv_usec = 0};
+static bool wrn_wdt_ok_to_close = false;
+
 
 static const char **command_list[] = {
 	(const char *[]){"COMMON", "SYNC", "TIME", "STATUS", "RESET", "PROGRAM", "LOG-CLEAN", "UNKNOWN", NULL},
@@ -163,7 +172,7 @@ void log_device_payload(struct payload_header *header, const unsigned char *payl
 	free(payload_hex);
 }
 
-bool device_write_command(int serial_fd, const char *cmd, const char *name)
+bool device_write_command(const char *cmd, const char *name)
 {
 	int len, n;
 
@@ -183,7 +192,7 @@ bool device_write_command(int serial_fd, const char *cmd, const char *name)
 	return true;
 }
 
-bool device_update_time(int serial_fd)
+bool device_update_time()
 {
 	struct timeval now;
 	gettimeofday(&now, NULL);
@@ -193,7 +202,7 @@ bool device_update_time(int serial_fd)
 		return false;
 	}
 	sprintf(cmd, "C1:%lld", (long long)now.tv_sec);
-	if (!device_write_command(serial_fd, cmd, "COMMON:TIME")) {
+	if (!device_write_command(cmd, "COMMON:TIME")) {
 		free(cmd);
 		return false;
 	}
@@ -202,7 +211,7 @@ bool device_update_time(int serial_fd)
 	return true;
 }
 
-bool device_send_sync(int serial_fd, unsigned int sequence_len)
+bool device_send_sync(unsigned int sequence_len)
 {
 	if ( sequence_len == 0 || sequence_len > MAX_SYNC_SEQUENCE)
 		return false;
@@ -213,7 +222,7 @@ bool device_send_sync(int serial_fd, unsigned int sequence_len)
 		return false;
 	}
 	sprintf(cmd, "C0:%d", sequence_len);
-	if (!device_write_command(serial_fd, cmd, "COMMON:SYNC")) {
+	if (!device_write_command(cmd, "COMMON:SYNC")) {
 		free(cmd);
 		return false;
 	}
@@ -237,12 +246,12 @@ static bool create_fifo(const char *fname, mode_t mode)
 	return true;
 }
 
-bool init_device(int serial_fd)
+bool init_device()
 {
-	if (!device_update_time(serial_fd))
+	if (!device_update_time())
 		return false;
 
-	if (!device_write_command(serial_fd, "R0", "RNG:FLOOD-ON"))
+	if (!device_write_command("R0", "RNG:FLOOD-ON"))
 		return false;
 
 	return true;
@@ -256,17 +265,21 @@ bool init_fifos()
 	if (!create_fifo(arguments->nrf_fifo, 0640))
 		return false;
 
+	if (!create_fifo(arguments->wdt_fifo, 0640))
+		return false;
+
 	if (!create_fifo(COMMAND_FIFO, 0644))
 		return false;	
 
 	return true;
 }
 
-void close_device(int serial_fd)
+void close_device()
 {
-	device_write_command(serial_fd, "R1", "RNG:FLOOD-OFF");
+	device_write_command("R1", "RNG:FLOOD-OFF");
 	close(rng_fifo_fd); rng_fifo_fd = -1;
 	close(nrf_fifo_fd); nrf_fifo_fd = -1;
+	close(wdt_fifo_fd); wdt_fifo_fd = -1;
 	close(cmd_fifo_fd); cmd_fifo_fd = -1;
 }
 
@@ -556,4 +569,76 @@ void process_confirmation(struct payload_header *header)
 		default:
 			break;
 	}
+}
+
+/*** WDT ***/
+
+static void wdt_enable()
+{
+	pthread_spin_lock(&wrn_wdt_lock);
+	if (time_delta(&wrn_wdt_keep_alive_sent) >= WDT_MIN_KEEP_ALIVE_INTERVAL) {
+		// watchdog is making this call too often
+		if (device_write_command("W0", "WDT:KEEP-ALIVE"))
+			gettimeofday(&wrn_wdt_keep_alive_sent, NULL);
+	}
+	pthread_spin_unlock(&wrn_wdt_lock);
+}
+
+static void wdt_disable()
+{
+	pthread_spin_lock(&wrn_wdt_lock);
+	device_write_command("W1", "WDT:DEACTIVATE");
+	pthread_spin_unlock(&wrn_wdt_lock);
+}
+
+static void *wrn_wdt_read()
+{
+	char c;
+
+	wdt_fifo_fd = open(arguments->wdt_fifo, O_RDONLY);
+	while (true) {
+		if (read(wdt_fifo_fd, &c, 1) == 1) {
+			if (!wrn_wdt_nowayout) {
+				wrn_wdt_ok_to_close = false;
+				if (c == WDT_MAGIC_CHAR)
+					wrn_wdt_ok_to_close = true;
+			}
+
+			wdt_enable();
+		} else {
+			wrn_wdt_release();
+			wdt_fifo_fd = open(arguments->wdt_fifo, O_RDONLY);
+		}
+	} // infinite loop
+}
+
+bool wrn_wdt_open()
+{
+	int ret;
+
+	wrn_wdt_ok_to_close = false;
+	pthread_spin_init(&wrn_wdt_lock, PTHREAD_PROCESS_PRIVATE);
+
+	ret = pthread_create(&wrn_wdt_thread, NULL, &wrn_wdt_read, NULL);
+	if (ret != 0) {
+		log_message(WRND_ERROR, "WDT: Failed to create the thread: %s", strerror(errno));
+		return false;
+	}
+
+	return true;
+}
+
+void wrn_wdt_close()
+{
+	pthread_cancel(wrn_wdt_thread);
+}
+
+void wrn_wdt_release()
+{
+	if (wrn_wdt_ok_to_close)
+		wdt_disable();
+	else
+		log_message(WRND_ERROR, "WDT: Device closed unexpectedly - timer will not stop");
+
+	wrn_wdt_ok_to_close = false;
 }

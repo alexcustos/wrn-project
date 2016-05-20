@@ -10,6 +10,7 @@
 #WRND_TIMEOUT=5
 #WRND_RNGFIFO="/run/wrnd/rng.fifo"
 #WRND_NRFFIFO="/run/wrnd/nrf.fifo"
+#WRND_WDTFIFO="/run/wrnd/wdt.fifo"
 #WRND_PIDFILE="/run/wrnd/pid"
 
 # Additional WRND options

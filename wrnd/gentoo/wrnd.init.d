@@ -14,7 +14,7 @@ fi
 depend() {
 	# to provide RNG fifo
 	before rngd
-	# to init serial port
+	# to provide WDT fifo
 	before watchdog
 }
 
@@ -36,6 +36,9 @@ start() {
 	fi
 	if [ -n "${WRND_NRFFIFO}" ]; then
 		OPTIONS="${OPTIONS} --nrf-fifo=${WRND_NRFFIFO}"
+	fi
+	if [ -n "${WRND_WDTFIFO}" ]; then
+		OPTIONS="${OPTIONS} --wdt-fifo=${WRND_WDTFIFO}"
 	fi
 	if [ -n "${WRND_OPTS}" ]; then
 		OPTIONS="${OPTIONS} ${WRND_OPTS}"

@@ -49,12 +49,14 @@ struct arguments {
 	unsigned char vtime;
 	char *rng_fifo;
 	char *nrf_fifo;
+	char *wdt_fifo;
 	char *pid_file;
     unsigned char verbose;
     bool daemonize;
 };
 
 extern struct arguments *arguments;
+extern int serial_fd;
 
 #define log_message(destination, fmt, args...) do { \
 	if (arguments->daemonize) { \

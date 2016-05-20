@@ -16,7 +16,7 @@ CC = gcc
 KERNEL := $(shell uname -r)
 INSTALL := $(shell which install)
 # -Wall Turns on most, but not all, compiler warnings
-CFLAGS = -Wall -std=c11
+CFLAGS = -Wall -std=gnu11 -pthread
 
 ifeq ($(BUILD),debug)
 # -g Adds debugging information to the executable file
@@ -72,7 +72,7 @@ ins: driver rm
 	insmod $(TARGET_WDT).ko
 
 rm:
-	rmmod $(TARGET_WDT)
+	- rmmod $(TARGET_WDT)
 
 endif
 # ifneq KERNELRELEASE

@@ -22,6 +22,7 @@
 
 static bool server_running = true;
 static int exit_code = EXIT_FAILURE;
+int serial_fd = -1;
 
 struct arguments default_arguments = {
 	.device_port = "/dev/ttyS0",
@@ -29,6 +30,7 @@ struct arguments default_arguments = {
 	.vtime = 5,
 	.rng_fifo = "/run/wrnd/rng.fifo",
 	.nrf_fifo = "/run/wrnd/nrf.fifo",
+	.wdt_fifo = "/run/wrnd/wdt.fifo",
 	.pid_file = "/run/wrnd/pid",
 	.verbose = 0,
 	.daemonize = false
@@ -46,6 +48,7 @@ static void usage(char *progname)
 	fprintf(stderr, "  -t, --time-out=vtime    Tenths of a second for the cycle (%d)\n", default_arguments.vtime);
 	fprintf(stderr, "  -r, --rng-fifo=file     FIFO for RNG (%s)\n", default_arguments.rng_fifo);
 	fprintf(stderr, "  -n, --nrf-fifo=file     FIFO for nRF24l01+ (%s)\n", default_arguments.nrf_fifo);
+	fprintf(stderr, "  -w, --wdt-fifo=file     FIFO for watchdog daemon (%s)\n", default_arguments.wdt_fifo);
 	fprintf(stderr, "  -p, --pid-file=file     Name for the PID file (%s)\n", default_arguments.pid_file);
 	fprintf(stderr, "  -v, --verbose=level     Verbose messages level [0|1|2|3] (%d)\n", default_arguments.verbose);
 	fprintf(stderr, "  -d, --daemonize         Run in the background as a daemon\n");
@@ -72,8 +75,8 @@ static void do_loop()
 	enum transmission_status status = TX_UNKNOWN;
 	uint16_t seq_num = 0;
 	bool sequence_found = false;
-	int serial_fd = -1, sync_retried = 0;
-	struct timeval sync_started;
+	int sync_retried = 0;
+	struct timeval sync_started = {.tv_sec = 0, .tv_usec = 0};
 
 	if (sizeof(header) > SERIAL_RX_BUFFER_SIZE) {
 		log_message(WRND_ERROR, "Serial RX buffer is too small");
@@ -82,7 +85,8 @@ static void do_loop()
 
 	while (server_running) {
 		if (status == TX_UNKNOWN) {
-			close(serial_fd);
+			if (serial_fd != -1)
+				close(serial_fd);
 			serial_fd = serialport_init(arguments->device_port, arguments->baud_rate, arguments->vtime);
 			if (serial_fd < 0)
 				break;
@@ -90,11 +94,11 @@ static void do_loop()
 			if ((enum verbose_level)arguments->verbose > VERBOSE_L0)
 				log_message(WRND_COMMON, "Sync with the device is about to be started");
 
-			if (!device_write_command(serial_fd, "R1", "RNG:FLOOD-OFF"))
+			if (!device_write_command("R1", "RNG:FLOOD-OFF"))
 				break;
 
 			while (read(serial_fd, &c, 1) > 0);  // clean input buffer
-			if (!device_send_sync(serial_fd, SERIAL_RX_SYNC_SEQUENCE))
+			if (!device_send_sync(SERIAL_RX_SYNC_SEQUENCE))
 				break;
 
 			gettimeofday(&sync_started, NULL);
@@ -158,7 +162,7 @@ static void do_loop()
 			}
 			if (sequence_found) {
 				log_message(WRND_COMMON, "The daemon has been successfully synced");
-				if (!init_device(serial_fd))
+				if (!init_device())
 					break;
 				sync_retried = 0;
 				bi = 0;
@@ -187,15 +191,14 @@ static void do_loop()
 		}
 	} // while server_running
 
-	close_device(serial_fd);
-	close(serial_fd);
+	close_device();
 }
 
 int main(int argc, char *const argv[])
 {
 	int opt = 0;
 	char *progname = basename(argv[0]);
-	char *opts = "hD:b:t:r:n:p:v:d";
+	char *opts = "hD:b:t:r:n:w:p:v:d";
 	struct option long_options[] = {
 		{"help", no_argument, NULL, 'h'},
 		{"device-port", required_argument, NULL, 'D'},
@@ -203,6 +206,7 @@ int main(int argc, char *const argv[])
 		{"time-out", required_argument, NULL, 't'},
 		{"rng-fifo", required_argument, NULL, 'r'},
 		{"nrf-fifo", required_argument, NULL, 'n'},
+		{"wdt-fifo", required_argument, NULL, 'w'},
 		{"pid-file", required_argument, NULL, 'p'},
 		{"verbose", required_argument, NULL, 'v'},
 		{"daemonize", no_argument, NULL, 'd'},
@@ -233,6 +237,10 @@ int main(int argc, char *const argv[])
 		case 'n':
 			if (optarg != NULL && strlen(optarg) > 0)
 				arguments->nrf_fifo = optarg;
+			break;
+		case 'w':
+			if (optarg != NULL && strlen(optarg) > 0)
+				arguments->wdt_fifo = optarg;
 			break;
 		case 'p':
 			if (optarg != NULL && strlen(optarg) > 0)
@@ -273,23 +281,30 @@ int main(int argc, char *const argv[])
 		return EXIT_FAILURE;
 
 	// check if the serial port available
-	int serial_fd = serialport_init(arguments->device_port, arguments->baud_rate, arguments->vtime);
+	serial_fd = serialport_init(arguments->device_port, arguments->baud_rate, arguments->vtime);
 	if (serial_fd < 0)
 		return EXIT_FAILURE;
-	close(serial_fd);
 
 	if (arguments->daemonize && daemon(0, 0) < 0) {
 		log_message(WRND_ERROR, "Failed to daemonize: %s", strerror(errno));
+		close(serial_fd);
 		return EXIT_FAILURE;
 	}
 
-	if (!write_pid_file(arguments->pid_file))
+	if (!write_pid_file(arguments->pid_file)) {
+		close(serial_fd);
 		return EXIT_FAILURE;
+	}
 
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGHUP, logrotate_signal);
 	signal(SIGINT, term_signal);
 	signal(SIGTERM, term_signal);
+
+	if (!wrn_wdt_open()) {
+		close(serial_fd);
+		return EXIT_FAILURE;
+	}
 
 	log_message(WRND_COMMON, "+++ Daemon %s has been started", progname);
 	do_loop();
@@ -297,6 +312,10 @@ int main(int argc, char *const argv[])
     unlink(arguments->pid_file);
     log_message(WRND_COMMON, "Daemon %s has been stopped", progname);
 
+	wrn_wdt_close();
+
+	if (serial_fd != -1)
+		close(serial_fd);
 	close_logs();
 	return exit_code;
 }

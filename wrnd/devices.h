@@ -11,6 +11,9 @@
 #define COMMAND_FIFO "/run/wrnd/cmd.fifo"
 #define COMMAND_FEEDBACK_SIZE 2024
 
+#define WDT_MAGIC_CHAR 'V'
+#define WDT_MIN_KEEP_ALIVE_INTERVAL 1000  // ms
+#define WDT_NOWAYOUT 0
 
 enum command_type {
 	CMD_COMMON = 0,
@@ -114,13 +117,13 @@ struct log_record
 
 
 bool init_fifos();
-bool init_device(int);
-void close_device(int);
+bool init_device();
+void close_device();
 
 
-bool device_write_command(int, const char *, const char *);
-bool device_update_time(int);
-bool device_send_sync(int, unsigned int);
+bool device_write_command(const char *, const char *);
+bool device_update_time();
+bool device_send_sync(unsigned int);
 
 void log_device_header(struct payload_header *);
 void log_device_error(struct payload_header *);
@@ -131,5 +134,9 @@ bool write_fifo_and_close(enum destination_fifo, const char *, size_t, bool);
 
 void process_payload(struct payload_header *, const unsigned char *);
 void process_confirmation(struct payload_header *);
+
+bool wrn_wdt_open();
+void wrn_wdt_close();
+void wrn_wdt_release();
 
 #endif /* DEVICES_H_ */
