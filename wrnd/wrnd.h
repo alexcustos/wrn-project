@@ -11,7 +11,7 @@
 #include "log.h"
 
 #define MAJOR_VERSION 0
-#define MINOR_VERSION 1
+#define MINOR_VERSION 2
 
 #define DEFAULT_PIDDIR "/run/wrnd"
 #define SERIAL_RX_BUFFER_SIZE 1024  // may came from WDT:LOG
@@ -49,8 +49,10 @@ struct arguments {
 	unsigned char vtime;
 	char *rng_fifo;
 	char *nrf_fifo;
-	char *wdt_fifo;
 	char *pid_file;
+	char *wdt_fifo;
+	unsigned int wdt_timeout;
+	bool wdt_nowayout;
     unsigned char verbose;
     bool daemonize;
 };

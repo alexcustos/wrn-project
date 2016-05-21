@@ -29,7 +29,7 @@ start() {
 		OPTIONS="${OPTIONS} --baud-rate=${WRND_BAUDRATE}"
 	fi
 	if [ -n "${WRND_TIMEOUT}" ]; then
-		OPTIONS="${OPTIONS} --time-out=${WRND_TIMEOUT}"
+		OPTIONS="${OPTIONS} --timeout=${WRND_TIMEOUT}"
 	fi
 	if [ -n "${WRND_RNGFIFO}" ]; then
 		OPTIONS="${OPTIONS} --rng-fifo=${WRND_RNGFIFO}"
@@ -39,6 +39,9 @@ start() {
 	fi
 	if [ -n "${WRND_WDTFIFO}" ]; then
 		OPTIONS="${OPTIONS} --wdt-fifo=${WRND_WDTFIFO}"
+	fi
+	if [ -n "${WRND_WDTTIMEOUT}" ]; then
+		OPTIONS="${OPTIONS} --wdt-timeout=${WRND_WDTTIMEOUT}"
 	fi
 	if [ -n "${WRND_OPTS}" ]; then
 		OPTIONS="${OPTIONS} ${WRND_OPTS}"

@@ -13,7 +13,8 @@
 
 #define WDT_MAGIC_CHAR 'V'
 #define WDT_MIN_KEEP_ALIVE_INTERVAL 1000  // ms
-#define WDT_NOWAYOUT 0
+#define WDT_TIMEOUT_MIN 30
+#define WDT_TIMEOUT_MAX 300
 
 enum command_type {
 	CMD_COMMON = 0,
@@ -120,9 +121,7 @@ bool init_fifos();
 bool init_device();
 void close_device();
 
-
 bool device_write_command(const char *, const char *);
-bool device_update_time();
 bool device_send_sync(unsigned int);
 
 void log_device_header(struct payload_header *);

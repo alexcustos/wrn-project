@@ -22,7 +22,6 @@ static char time_buffer[21];
 
 static pthread_spinlock_t wrn_wdt_lock;
 static pthread_t wrn_wdt_thread;
-static bool wrn_wdt_nowayout = WDT_NOWAYOUT;
 static struct timeval wrn_wdt_keep_alive_sent = {.tv_sec = 0, .tv_usec = 0};
 static bool wrn_wdt_ok_to_close = false;
 
@@ -192,7 +191,7 @@ bool device_write_command(const char *cmd, const char *name)
 	return true;
 }
 
-bool device_update_time()
+static bool device_update_time()
 {
 	struct timeval now;
 	gettimeofday(&now, NULL);
@@ -203,6 +202,23 @@ bool device_update_time()
 	}
 	sprintf(cmd, "C1:%lld", (long long)now.tv_sec);
 	if (!device_write_command(cmd, "COMMON:TIME")) {
+		free(cmd);
+		return false;
+	}
+
+	free(cmd);
+	return true;
+}
+
+static bool device_set_wdt_timeout()
+{
+	char *cmd = malloc(snprintf(NULL, 0, "W3:%u", arguments->wdt_timeout) + 1);
+	if (cmd == NULL) {
+		log_message(WRND_ERROR, "Cannot allocate required memory: device_set_wdt_timeout");
+		return false;
+	}
+	sprintf(cmd, "W3:%u", arguments->wdt_timeout);
+	if (!device_write_command(cmd, "WDT:TIMEOUT")) {
 		free(cmd);
 		return false;
 	}
@@ -249,6 +265,9 @@ static bool create_fifo(const char *fname, mode_t mode)
 bool init_device()
 {
 	if (!device_update_time())
+		return false;
+
+	if (!device_set_wdt_timeout())
 		return false;
 
 	if (!device_write_command("R0", "RNG:FLOOD-ON"))
@@ -598,7 +617,7 @@ static void *wrn_wdt_read()
 	wdt_fifo_fd = open(arguments->wdt_fifo, O_RDONLY);
 	while (true) {
 		if (read(wdt_fifo_fd, &c, 1) == 1) {
-			if (!wrn_wdt_nowayout) {
+			if (!arguments->wdt_nowayout) {
 				wrn_wdt_ok_to_close = false;
 				if (c == WDT_MAGIC_CHAR)
 					wrn_wdt_ok_to_close = true;
@@ -610,6 +629,8 @@ static void *wrn_wdt_read()
 			wdt_fifo_fd = open(arguments->wdt_fifo, O_RDONLY);
 		}
 	} // infinite loop
+
+	return (void *)0;
 }
 
 bool wrn_wdt_open()

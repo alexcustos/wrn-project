@@ -30,8 +30,10 @@ struct arguments default_arguments = {
 	.vtime = 5,
 	.rng_fifo = "/run/wrnd/rng.fifo",
 	.nrf_fifo = "/run/wrnd/nrf.fifo",
-	.wdt_fifo = "/run/wrnd/wdt.fifo",
 	.pid_file = "/run/wrnd/pid",
+	.wdt_fifo = "/run/wrnd/wdt.fifo",
+	.wdt_timeout = 180,
+	.wdt_nowayout = false,
 	.verbose = 0,
 	.daemonize = false
 };
@@ -42,16 +44,19 @@ static void usage(char *progname)
 	fprintf(stderr, "%s version %d.%d, usage:\n", progname, MAJOR_VERSION, MINOR_VERSION);
 	fprintf(stderr, "%s [options]\n", progname);
 	fprintf(stderr, "Options (default value in parenthesis):\n");
-	fprintf(stderr, "  -h, --help              Print this help message\n");
-	fprintf(stderr, "  -D, --device-port=port  Serial port of the device (%s)\n", default_arguments.device_port);
-	fprintf(stderr, "  -b, --baud-rate=rate    Baud rate in bps (%d)\n", default_arguments.baud_rate);
-	fprintf(stderr, "  -t, --time-out=vtime    Tenths of a second for the cycle (%d)\n", default_arguments.vtime);
-	fprintf(stderr, "  -r, --rng-fifo=file     FIFO for RNG (%s)\n", default_arguments.rng_fifo);
-	fprintf(stderr, "  -n, --nrf-fifo=file     FIFO for nRF24l01+ (%s)\n", default_arguments.nrf_fifo);
-	fprintf(stderr, "  -w, --wdt-fifo=file     FIFO for watchdog daemon (%s)\n", default_arguments.wdt_fifo);
-	fprintf(stderr, "  -p, --pid-file=file     Name for the PID file (%s)\n", default_arguments.pid_file);
-	fprintf(stderr, "  -v, --verbose=level     Verbose messages level [0|1|2|3] (%d)\n", default_arguments.verbose);
-	fprintf(stderr, "  -d, --daemonize         Run in the background as a daemon\n");
+	fprintf(stderr, "  -h, --help                  Print this help message\n");
+	fprintf(stderr, "  -D, --device-port=port      Serial port of the device (%s)\n", default_arguments.device_port);
+	fprintf(stderr, "  -b, --baud-rate=rate        Baud rate in bps (%u)\n", default_arguments.baud_rate);
+	fprintf(stderr, "  -t, --timeout=vtime         Tenths of a second for serial port read cycle (%u)\n", default_arguments.vtime);
+	fprintf(stderr, "  -r, --rng-fifo=file         FIFO for RNG (%s)\n", default_arguments.rng_fifo);
+	fprintf(stderr, "  -n, --nrf-fifo=file         FIFO for nRF24l01+ (%s)\n", default_arguments.nrf_fifo);
+	fprintf(stderr, "  -p, --pid-file=file         Name for the PID file (%s)\n", default_arguments.pid_file);
+	fprintf(stderr, "  -w, --wdt-fifo=file         FIFO for the watchdog daemon (%s)\n", default_arguments.wdt_fifo);
+	fprintf(stderr, "  -T, --wdt-timeout=timeout   The watchdog trigger timeout [min: %u, max: %u] (%u)\n",
+		WDT_TIMEOUT_MIN, WDT_TIMEOUT_MAX, default_arguments.wdt_timeout);
+	fprintf(stderr, "  -N, --wdt-nowayout          Watchdog cannot be stopped once started\n");
+	fprintf(stderr, "  -v, --verbose=level         Verbose messages level [0|1|2|3] (%u)\n", default_arguments.verbose);
+	fprintf(stderr, "  -d, --daemonize             Run in the background as a daemon\n");
 	exit(EXIT_FAILURE);
 }
 
@@ -198,16 +203,18 @@ int main(int argc, char *const argv[])
 {
 	int opt = 0;
 	char *progname = basename(argv[0]);
-	char *opts = "hD:b:t:r:n:w:p:v:d";
+	char *opts = "hD:b:t:r:n:p:w:T:Nv:d";
 	struct option long_options[] = {
 		{"help", no_argument, NULL, 'h'},
 		{"device-port", required_argument, NULL, 'D'},
 		{"baud-rate", required_argument, NULL, 'b'},
-		{"time-out", required_argument, NULL, 't'},
+		{"timeout", required_argument, NULL, 't'},
 		{"rng-fifo", required_argument, NULL, 'r'},
 		{"nrf-fifo", required_argument, NULL, 'n'},
-		{"wdt-fifo", required_argument, NULL, 'w'},
 		{"pid-file", required_argument, NULL, 'p'},
+		{"wdt-fifo", required_argument, NULL, 'w'},
+		{"wdt-timeout", required_argument, NULL, 'T'},
+		{"wdt-nowayout", no_argument, NULL, 'N'},
 		{"verbose", required_argument, NULL, 'v'},
 		{"daemonize", no_argument, NULL, 'd'},
 		{NULL, 0, NULL, 0}
@@ -238,13 +245,24 @@ int main(int argc, char *const argv[])
 			if (optarg != NULL && strlen(optarg) > 0)
 				arguments->nrf_fifo = optarg;
 			break;
+		case 'p':
+			if (optarg != NULL && strlen(optarg) > 0)
+				arguments->pid_file = optarg;
+			break;
 		case 'w':
 			if (optarg != NULL && strlen(optarg) > 0)
 				arguments->wdt_fifo = optarg;
 			break;
-		case 'p':
+		case 'T':
 			if (optarg != NULL && strlen(optarg) > 0)
-				arguments->pid_file = optarg;
+				arguments->wdt_timeout = (unsigned int)strtoul(optarg, NULL, 10);
+			if (arguments->wdt_timeout < WDT_TIMEOUT_MIN)
+				arguments->wdt_timeout = WDT_TIMEOUT_MIN;
+			if (arguments->wdt_timeout > WDT_TIMEOUT_MAX)
+				arguments->wdt_timeout = WDT_TIMEOUT_MAX;
+			break;
+		case 'N':
+			arguments->wdt_nowayout = true;
 			break;
 		case 'v':
 			if (optarg != NULL && strlen(optarg) > 0) {
