@@ -29,12 +29,6 @@ int32_t Time::now()
 		prev_us_time += delta * 1000;
 	}
 
-	delta = (millis() - prev_us_uptime) / 1000;
-	if ( delta > 0 ) {
-		uptime += delta;
-		prev_us_uptime += delta * 1000;
-	}
-
 	return time;
 }
 

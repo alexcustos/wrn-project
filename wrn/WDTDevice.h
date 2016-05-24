@@ -48,12 +48,10 @@ public:
 
 inline void WDTDevice::update()
 {
-	uint32_t uptime;
 	int32_t delta;
 
 	if (active) {
-		uptime = sys_time.get_uptime();
-		delta = timeout - (uptime - keep_alive_uptime);
+		delta = timeout - (sys_time.get_uptime() - keep_alive_uptime);
 		if (min_delta > delta) min_delta = delta;
 
 		if (delta <= 0) {

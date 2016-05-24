@@ -48,11 +48,23 @@ public:
 	int32_t set_time(int32_t);
 	uint32_t millis();
 	TimeStatus get_status() { return status; };
-	uint32_t get_uptime() { now(); return uptime; };
+	uint32_t get_uptime();
 
 	// Interrupt handler
 	void _overflow_interrupt_irq(void);
 };
+
+inline uint32_t Time::get_uptime()
+{
+	uint32_t m = millis();
+
+	while (m - prev_us_uptime >= 1000) {
+		uptime++;
+		prev_us_uptime += 1000;
+	}
+
+	return uptime;
+}
 
 inline uint32_t Time::millis()
 {
