@@ -3,6 +3,8 @@
 
 #define DEBUG_CMD_DELAY 1000
 #define RF24_CHANEL 62 // uint8_t
+#define WDT_BITS_PER_CYCLE 16
+
 
 #include <avr/io.h>
 #include <avr/wdt.h>
@@ -94,9 +96,11 @@ int main(void)
 		}
 
 		// CMD_RNG_SEND
-		if (rng_device.read(&cmd)) {
-			if (!rng_device.run(&cmd)) cmd.send_header(-1);
-			//cmd.reset();
+		for (int i = 0; i < WDT_BITS_PER_CYCLE; i++) {
+			if (rng_device.read(&cmd)) {
+				if (!rng_device.run(&cmd)) cmd.send_header(-1);
+				//cmd.reset();
+			}
 		}
 
 		// watchdog trigger

@@ -90,7 +90,7 @@ inline bool RNGDevice::read(SerialCommand *cmd)
 		balance = false;
 		if (pan_left > pan_right) fault = pan_left - pan_right;
 		else fault = pan_right - pan_left;
-		acceptable_fault = ((measure_limit - 1) / 256 + 1) * 2;
+		acceptable_fault = ((measure_limit - 1) / 256 + 1) * 3;
 
 		if (fault > acceptable_fault) {
 			if (pan_right > pan_left && threshold < uint8_t(-1)) threshold++;
