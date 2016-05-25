@@ -43,7 +43,7 @@ function device_cmd()
 		if [ -O ${LOCK_NAME} ]; then chmod 666 ${LOCK_NAME}; fi
 
 		exec 3< <(timeout ${FIFO_MAX_LOCK} cat ${WRND_CMDFIFO})
-		sleep 0.2
+		sleep 0.1
 		if [ -r /dev/fd/3 ]; then
 			echo "$cmd" >${WRND_DEVICE}
 			while read log_line <&3; do

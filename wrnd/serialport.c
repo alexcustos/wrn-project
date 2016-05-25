@@ -60,7 +60,7 @@ static bool serialport_attributes(int fd, unsigned int speed, unsigned char vmin
 
 int serialport_init(const char* serialport, unsigned int speed, unsigned char vtime)
 {
-	int fd = open(serialport, O_RDWR | O_NOCTTY, O_SYNC);
+	int fd = open(serialport, O_RDWR | O_NOCTTY | O_SYNC);
 	if (fd == -1) {
 		log_message(WRND_ERROR, "Unable to open port: %s", serialport);
 		return -1;
